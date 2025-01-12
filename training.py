@@ -24,9 +24,9 @@ image_size=(images.shape[1],images.shape[2])
 
 models=[]
 
-train_num=500
+train_num=1000
 
-learn_rate=10000
+learn_rate=100
 
 images=images[:train_num]
 labels=labels[:train_num]
@@ -113,22 +113,28 @@ class model:
         image=image.squeeze()
         image=torch.flatten(image,1)
 
-        derivatives=torch.empty((self.model.size()[2],self.model.size()[0],self.model.size()[1]),dtype=torch.float32)
+        derivatives=torch.empty((self.model.size()[2],self.model.size()[0],self.model.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
 
         for i in range(self.model.size()[0]):
             for j in range(self.model.size()[1]):
-                derivatives[0][i][j]=change_m_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i).sum()
+                derivatives[0][i][j]=change_m_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i)
+                derivatives[0][i][j]*=-1/(change_function(image[:,j],self.model[i][j][0],self.model[i][j][1])+0.0000001)
 
         for i in range(self.model.size()[0]):
             for j in range(self.model.size()[1]):
-                derivatives[1][i][j]=change_b_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i).sum()
+                derivatives[1][i][j]=change_b_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i)
+                derivatives[1][i][j]*=-1/(change_function(image[:,j],self.model[i][j][0],self.model[i][j][1])+0.0000001)
 
-        max_index=derivatives.argmax()
+        derivatives=torch.mean(derivatives,dim=-1)
+
+        max_index=derivatives.argmin()
+
+        print("min_deri: ",derivatives.min())
 
         self.changed=(int(int(max_index%(derivatives.shape[2]*derivatives.shape[1]))/derivatives.shape[2]),
                       int(max_index%derivatives.shape[2]),
                       int(max_index/derivatives.shape[2]/derivatives.shape[1]),
-                      0.1)
+                      0.5)
 
         self.change()
 
@@ -177,9 +183,8 @@ def apply(k,train_num=train_num):
     
     for j in range(train_num):
         k.apply(images[j])
-        k.loss+=(float(1-k.ans[labels[j]])*2)**(2)
+        k.loss-=math.log(float(k.ans[labels[j]]))
         if max(k.ans)==k.ans[labels[j]]:
-            k.loss-=0.5
             cnt+=1
     print("accu: ",cnt/train_num)
     return cnt/train_num
@@ -197,32 +202,39 @@ apply(models[0])
 cache=model()
 cache.clone(models[0])
 
+initial=models[0].loss
+
 for i in range(10):
     models[1].clone(models[0])
     models[1].deri_change()
     apply(models[1])
 
-    models[1].model[models[1].changed[0]][models[1].changed[1]][models[1].changed[2]]-=0.1
+    models[1].model[models[1].changed[0]][models[1].changed[1]][models[1].changed[2]]-=models[1].changed[3]
     models[1].model[models[1].changed[0]][models[1].changed[1]][models[1].changed[2]]+=(models[0].loss-models[1].loss)*learn_rate
     models[0].clone(models[1])
     #'''
     apply(models[0])
-    if models[0].loss>=cache.loss:
+
+    print(models[0].loss,cache.loss)
+    if models[0].loss>=cache.loss+0.1:
         models[0].clone(cache)
         learn_rate/=10
     else:
-        cache.clone(models[0])#'''
-        if random.randint(0,3)==0:
+        if models[0].loss>=cache.loss:
+            learn_rate/=10
+        elif random.randint(0,3)==0:
             learn_rate*=10
+        cache.clone(models[0])#'''
     print(learn_rate)
     print(models[0].loss)
+    print()
 
 print(models[0].loss)
 print(datetime.datetime.now())
 
-if learn_rate<0.1:
+if learn_rate<=0.1 or abs(models[0].loss-initial)<2:
     cache=apply(models[0])
-    if cache>0.2:
+    if cache>0.25:
         models[0].write(str(models[0].loss)+'.txt')
     if os.path.exists(model_file):
         os.remove(model_file)

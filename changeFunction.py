@@ -8,7 +8,7 @@ def change_function(x,m,b):
 
     x=torch.sigmoid(x)
 
-    #x=x/decrease
+    x=x/decrease
 
     return x
 
@@ -19,7 +19,7 @@ def change_m_function(x,m,b,label,i):
 
     cache=torch.sigmoid(cache)*(1-torch.sigmoid(cache))
 
-    cache*=x/decrease*((-1)**(label==i).float())
+    cache*=x/decrease*(label==i).float()
 
     return cache
 
@@ -30,7 +30,7 @@ def change_b_function(x,m,b,label,i):
 
     cache=torch.sigmoid(cache)*(1-torch.sigmoid(cache))
 
-    cache=cache/decrease*((-1)**(label==i).float())
+    cache=cache/decrease*(label==i).float()
 
     return cache
 
