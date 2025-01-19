@@ -20,13 +20,15 @@ labels=reading.load_labels(label_path)
 images = torch.tensor(images, dtype=torch.float32).to(torch.device('cuda'))
 labels = torch.tensor(labels, dtype=torch.long).to(torch.device('cuda'))
 
+images=(images-images.mean())/images.std()
+
 image_size=(images.shape[1],images.shape[2])
 
 models=[]
 
 train_num=1000
 
-learn_rate=100
+learn_rate=10
 
 images=images[:train_num]
 labels=labels[:train_num]
@@ -34,9 +36,9 @@ labels=labels[:train_num]
 print(image_size)
 
 class juanjihe:
-    def __init__(self,size=3):
+    def __init__(self,size=5):
         self.size=size
-        self.data=torch.rand(self.size,self.size)*4-2
+        self.data=torch.rand(self.size,self.size)*2-1
         self.data=self.data.to('cuda').unsqueeze(0).unsqueeze(0)
 
     def apply(self,image):
@@ -65,17 +67,28 @@ class model:
 
         self.model=[]
 
-        for i in range(10):
+        for i in range(576):
             self.model.append([])
-            for j in range(169):
+            for j in range(20):
                 self.model[i].append([])
                 for k in range(2):
-                    self.model[i][j].append(random.uniform(-2,2))
+                    self.model[i][j].append(random.uniform(-1,1))
         
         self.model=torch.tensor(self.model, dtype=torch.float32).to(torch.device('cuda'))
 
+        self.model_1=[]
+
+        for i in range(self.model.size()[1]):
+            self.model_1.append([])
+            for j in range(10):
+                self.model_1[i].append([])
+                for k in range(2):
+                    self.model_1[i][j].append(random.uniform(-1,1))
+        
+        self.model_1=torch.tensor(self.model_1, dtype=torch.float32).to(torch.device('cuda'))
+
         self.ans=[]
-        for i in range(self.model.size()[0]):
+        for i in range(self.model_1.size()[1]):
             self.ans.append(0)
 
         self.ans=torch.tensor(self.ans, dtype=torch.float32).to(torch.device('cuda'))
@@ -83,59 +96,90 @@ class model:
         self.loss=0
 
         self.changed=(0,0,0)
+
+        self.changed_1=(0,0,0)
     
     def apply(self,image):
         image=image.clone().unsqueeze(0).unsqueeze(0)
 
-        for i in range(1):
+        for i in range(len(self.juanjihes)):
             image=self.juanjihes[i].apply(image)
-            image=torch.nn.functional.max_pool2d(image,2,2,0)
 
         #5*5
         image=image[0][0]
         image=torch.flatten(image)
 
-        for i in range(self.model.size()[0]):
-            self.ans[i]=float(change_function(image,self.model[i][:,0],self.model[i][:,1]).sum())
+        #print(image.size())
+
+        cache=torch.empty((self.model.size()[1]),dtype=torch.float32).to("cuda")
+
+        for i in range(self.model.size()[1]):
+            cache[i]=float(change_function(image,self.model[:,i,0],self.model[:,i,1]).sum())
+
+        for i in range(self.model_1.size()[1]):
+            self.ans[i]=float(change_function(cache,self.model_1[:,i,0],self.model_1[:,i,1]).sum())
 
         self.ans=torch.nn.functional.softmax(self.ans,dim=-1)
         
     def change(self):
-        self.model[self.changed[0]][self.changed[1]][self.changed[2]]+=self.changed[3]
+        self.model+=self.changed
+        self.model_1+=self.changed_1
 
     def deri_change(self,images=images,labels=labels):
         image=images.clone().unsqueeze(1)
 
-        for i in range(1):
+        for i in range(len(self.juanjihes)):
             image=self.juanjihes[i].apply(image)
-            image=torch.nn.functional.max_pool2d(image,2,2,0)
         
         image=image.squeeze()
         image=torch.flatten(image,1)
 
-        derivatives=torch.empty((self.model.size()[2],self.model.size()[0],self.model.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
+        print(image.size(),"1111")
+
+        derivatives=torch.empty((self.model.size()[0],self.model.size()[1],self.model.size()[2],image.size()[0]),dtype=torch.float32).to("cuda")
+        derivatives_1=torch.empty((self.model_1.size()[0],self.model_1.size()[1],self.model_1.size()[2],image.size()[0]),dtype=torch.float32).to("cuda")
+
+        cache=torch.empty((self.model.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
+
+        for i in range(self.ans.size()[0]):
+            for j in range(image.size()[0]):
+                cache[i][j]=float(change_function(image[j],self.model[:,i,0],self.model[:,i,1]).sum())
+
+        for i in range(self.model_1.size()[0]):
+            for j in range(self.model_1.size()[1]):
+                derivatives_1[i][j][0]=change_m_function(cache[i],self.model_1[i][j][0],self.model_1[i][j][1],labels[:],j)
+                derivatives_1[i][j][0]*=-1/(change_function(cache[i],self.model_1[i][j][0],self.model_1[i][j][1])+0.0000001)
+
+        for i in range(self.model_1.size()[0]):
+            for j in range(self.model_1.size()[1]):
+                derivatives_1[i][j][1]=change_b_function(cache[i],self.model_1[i][j][0],self.model_1[i][j][1],labels[:],j)
+                derivatives_1[i][j][1]*=-1/(change_function(cache[i],self.model_1[i][j][0],self.model_1[i][j][1])+0.0000001)
+
 
         for i in range(self.model.size()[0]):
             for j in range(self.model.size()[1]):
-                derivatives[0][i][j]=change_m_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i)
-                derivatives[0][i][j]*=-1/(change_function(image[:,j],self.model[i][j][0],self.model[i][j][1])+0.0000001)
+                derivatives[i][j][0]=change_m_function(image[:,i],self.model[i][j][0],self.model[i][j][1],labels[:],labels[:])
 
         for i in range(self.model.size()[0]):
             for j in range(self.model.size()[1]):
-                derivatives[1][i][j]=change_b_function(image[:,j],self.model[i][j][0],self.model[i][j][1],labels[:],i)
-                derivatives[1][i][j]*=-1/(change_function(image[:,j],self.model[i][j][0],self.model[i][j][1])+0.0000001)
+                derivatives[i][j][1]=change_b_function(image[:,i],self.model[i][j][0],self.model[i][j][1],labels[:],labels[:])
 
+        cache=derivatives_1.sum(dim=1)
+
+        for i in range(self.model.size()[0]):
+            for j in range(self.model.size()[1]):
+                for k in range(self.model.size()[2]):
+                    derivatives[i][j][k]*=cache[j][k]
+
+        print(derivatives_1.sum())
+        print(derivatives.sum())
+        
+        derivatives_1=torch.mean(derivatives_1,dim=-1)
         derivatives=torch.mean(derivatives,dim=-1)
 
-        max_index=derivatives.argmin()
-
-        print("min_deri: ",derivatives.min())
-
-        self.changed=(int(int(max_index%(derivatives.shape[2]*derivatives.shape[1]))/derivatives.shape[2]),
-                      int(max_index%derivatives.shape[2]),
-                      int(max_index/derivatives.shape[2]/derivatives.shape[1]),
-                      0.5)
-
+        self.changed_1=derivatives_1
+        self.changed=derivatives
+        
         self.change()
 
     def clone(self,sample):
@@ -145,6 +189,7 @@ class model:
         self.loss=sample.loss
 
         self.model=sample.model.clone()
+        self.model_1=sample.model_1.clone()
         self.ans=sample.ans.clone()
 
         self.changed=sample.changed
@@ -161,6 +206,11 @@ class model:
                 for j in range(self.model.size()[1]):
                     for k in range(self.model.size()[2]):
                         fo.write(str(float(self.model[i][j][k]))+'\n')
+
+            for i in range(self.model_1.size()[0]):
+                for j in range(self.model_1.size()[1]):
+                    for k in range(self.model_1.size()[2]):
+                        fo.write(str(float(self.model_1[i][j][k]))+'\n')
             fo.close()
     def read(self,model_file=model_file):
         with open(model_file,'r') as fo:
@@ -175,6 +225,12 @@ class model:
             for j in range(self.model.size()[1]):
                 for k in range(self.model.size()[2]):
                     self.model[i][j][k]=float(file[i*self.model.size()[2]*self.model.size()[1]+j*self.model.size()[2]+k])
+        file=file[self.model.size()[0]*self.model.size()[1]*self.model.size()[2]:]
+
+        for i in range(self.model_1.size()[0]):
+            for j in range(self.model_1.size()[1]):
+                for k in range(self.model_1.size()[2]):
+                    self.model_1[i][j][k]=float(file[i*self.model_1.size()[2]*self.model_1.size()[1]+j*self.model_1.size()[2]+k])
 
 def apply(k,train_num=train_num):
     k.loss=0
@@ -199,6 +255,7 @@ if os.path.exists(model_file):
     models[0].read()
 
 apply(models[0])
+
 cache=model()
 cache.clone(models[0])
 
@@ -208,23 +265,25 @@ for i in range(10):
     models[1].clone(models[0])
     models[1].deri_change()
     apply(models[1])
-
-    models[1].model[models[1].changed[0]][models[1].changed[1]][models[1].changed[2]]-=models[1].changed[3]
-    models[1].model[models[1].changed[0]][models[1].changed[1]][models[1].changed[2]]+=(models[0].loss-models[1].loss)*learn_rate
+    
+    models[1].model-=models[1].changed
+    models[1].model_1-=models[1].changed_1
+    models[1].model+=models[1].changed*learn_rate*(models[0].loss-models[1].loss)
+    models[1].model_1+=models[1].changed_1*learn_rate*(models[0].loss-models[1].loss)
     models[0].clone(models[1])
-    #'''
+    
     apply(models[0])
 
     print(models[0].loss,cache.loss)
     if models[0].loss>=cache.loss+0.1:
         models[0].clone(cache)
-        learn_rate/=10
+        learn_rate*=0.9
     else:
         if models[0].loss>=cache.loss:
-            learn_rate/=10
+            learn_rate*=0.9
         elif random.randint(0,3)==0:
-            learn_rate*=10
-        cache.clone(models[0])#'''
+            learn_rate/=0.9
+        cache.clone(models[0])
     print(learn_rate)
     print(models[0].loss)
     print()
@@ -232,7 +291,7 @@ for i in range(10):
 print(models[0].loss)
 print(datetime.datetime.now())
 
-if learn_rate<=0.1 or abs(models[0].loss-initial)<2:
+if abs(models[0].loss-initial)<2 or learn_rate<0.01:
     cache=apply(models[0])
     if cache>0.25:
         models[0].write(str(models[0].loss)+'.txt')
