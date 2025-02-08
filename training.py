@@ -26,19 +26,24 @@ image_size=(images.shape[1],images.shape[2])
 
 models=[]
 
-train_num=1000
+train_num=500
 
-learn_rate=10
+learn_rate=1
 
 images=images[:train_num]
 labels=labels[:train_num]
 
 print(image_size)
 
-class juanjihe:
+def direc(a):
+    if a>0:
+        return 1
+    return -1
+
+class kernel:
     def __init__(self,size=5):
         self.size=size
-        self.data=torch.rand(self.size,self.size)*2-1
+        self.data=torch.rand(self.size,self.size)*1.4-0.7
         self.data=self.data.to('cuda').unsqueeze(0).unsqueeze(0)
 
     def apply(self,image):
@@ -63,16 +68,16 @@ class model:
     def __init__(self):
         self.juanjihes=[]
         for i in range(1):
-            self.juanjihes.append(juanjihe())
+            self.juanjihes.append(kernel())
 
         self.model=[]
 
         for i in range(576):
             self.model.append([])
-            for j in range(20):
+            for j in range(30):
                 self.model[i].append([])
                 for k in range(2):
-                    self.model[i][j].append(random.uniform(-1,1))
+                    self.model[i][j].append(random.uniform(-0.7,0.7))
         
         self.model=torch.tensor(self.model, dtype=torch.float32).to(torch.device('cuda'))
 
@@ -83,7 +88,7 @@ class model:
             for j in range(10):
                 self.model_1[i].append([])
                 for k in range(2):
-                    self.model_1[i][j].append(random.uniform(-1,1))
+                    self.model_1[i][j].append(random.uniform(-0.7,0.7))
         
         self.model_1=torch.tensor(self.model_1, dtype=torch.float32).to(torch.device('cuda'))
 
@@ -96,8 +101,8 @@ class model:
         self.loss=0
 
         self.changed=(0,0,0)
-
         self.changed_1=(0,0,0)
+        self.changed_kernel=(0,0,0)
     
     def apply(self,image):
         image=image.clone().unsqueeze(0).unsqueeze(0)
@@ -121,9 +126,10 @@ class model:
 
         self.ans=torch.nn.functional.softmax(self.ans,dim=-1)
         
-    def change(self):
-        self.model+=self.changed
-        self.model_1+=self.changed_1
+    def change(self,factor=1):
+        self.model+=self.changed*factor
+        self.model_1+=self.changed_1*factor
+        self.juanjihes[0].data[0][0]+=self.changed_kernel*factor
 
     def deri_change(self,images=images,labels=labels):
         image=images.clone().unsqueeze(1)
@@ -134,14 +140,14 @@ class model:
         image=image.squeeze()
         image=torch.flatten(image,1)
 
-        print(image.size(),"1111")
+        print(images.size(),"1111")
 
         derivatives=torch.empty((self.model.size()[0],self.model.size()[1],self.model.size()[2],image.size()[0]),dtype=torch.float32).to("cuda")
         derivatives_1=torch.empty((self.model_1.size()[0],self.model_1.size()[1],self.model_1.size()[2],image.size()[0]),dtype=torch.float32).to("cuda")
 
         cache=torch.empty((self.model.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
 
-        for i in range(self.ans.size()[0]):
+        for i in range(self.model.size()[1]):
             for j in range(image.size()[0]):
                 cache[i][j]=float(change_function(image[j],self.model[:,i,0],self.model[:,i,1]).sum())
 
@@ -164,21 +170,71 @@ class model:
             for j in range(self.model.size()[1]):
                 derivatives[i][j][1]=change_b_function(image[:,i],self.model[i][j][0],self.model[i][j][1],labels[:],labels[:])
 
-        cache=derivatives_1.sum(dim=1)
+
+        #cache_1最后一层关于倒数第二层输入数据的导数
+        cache_1=torch.empty((self.model_1.size()[0],self.model_1.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
+
+        for i in range(self.model_1.size()[0]):
+            for j in range(self.model_1.size()[1]):
+                cache_1[i][j]=change_m_function(self.model_1[i][j][0],cache[i],self.model_1[i][j][1],labels[:],j)
+                cache_1[i][j]*=-1/(change_function(cache[i],self.model_1[i][j][0],self.model_1[i][j][1])+0.0000001)
+
+        cache_1=cache_1.mean(dim=-1)
+        cache_1=cache_1.mean(dim=-1)
+
+        #倒数第二层的倒数乘以上一层的梯度
 
         for i in range(self.model.size()[0]):
             for j in range(self.model.size()[1]):
                 for k in range(self.model.size()[2]):
-                    derivatives[i][j][k]*=cache[j][k]
+                    derivatives[i][j][k]*=cache_1[j]
 
-        print(derivatives_1.sum())
-        print(derivatives.sum())
+        #计算卷积核梯度
+
+        cache_2=torch.empty((self.model.size()[0],self.model.size()[1],image.size()[0]),dtype=torch.float32).to("cuda")
+        for i in range(self.model.size()[0]):
+            for j in range(self.model.size()[1]):
+                cache_2[i][j]=change_m_function(self.model[i][j][0],image[:,i],self.model[i][j][1],labels[:],labels[:])
+
+        cache_2=cache_2.mean(dim=-1)
+        for i in range(self.model.size()[0]):
+            cache_2[i]*=cache_1
+
+        cache_2=cache_2.mean(dim=-1)
+
+        #cache_2现为第一层关于卷积操作结果的导数
+        #计算卷积核每个参数的导数
+        print(333333)
+        deri_kernel=torch.empty((5,5,images.size()[0]),dtype=torch.float32).to("cuda")
+        for i in range(5):
+            for j in range(5):
+                for k in range(24):
+                    for l in range(24):
+                        deri_kernel[i][j]=cache_2[k*24+l]*images[:,k+i,l+j]
+        
+        #求数据点关于所有图平均的导数
+        print(444444)
         
         derivatives_1=torch.mean(derivatives_1,dim=-1)
         derivatives=torch.mean(derivatives,dim=-1)
+        deri_kernel=deri_kernel.mean(dim=-1)
+
+        print(derivatives_1.sum())
+        print(derivatives.sum())
+        print(deri_kernel)
+
+        derivatives_1=torch.clamp(derivatives_1,max=100,min=-100)
+        derivatives=torch.clamp(derivatives,max=100,min=-100)
+        deri_kernel=torch.clamp(deri_kernel,max=100,min=-100)
+        #print(derivatives_1)
+
+        print(derivatives_1.sum())
+        print(derivatives.sum())
+        print(deri_kernel)
 
         self.changed_1=derivatives_1
         self.changed=derivatives
+        self.changed_kernel=deri_kernel
         
         self.change()
 
@@ -239,10 +295,15 @@ def apply(k,train_num=train_num):
     
     for j in range(train_num):
         k.apply(images[j])
-        k.loss-=math.log(float(k.ans[labels[j]]))
+        k.loss-=math.log(float(k.ans[labels[j]]+0.0001))
         if max(k.ans)==k.ans[labels[j]]:
             cnt+=1
+        #if j<100:
+            #print(k.ans)
     print("accu: ",cnt/train_num)
+
+    if cnt/train_num>0.45:
+        k.write(str(k.loss)+'.txt')
     return cnt/train_num
 
 print(datetime.datetime.now())
@@ -261,15 +322,13 @@ cache.clone(models[0])
 
 initial=models[0].loss
 
-for i in range(10):
+for i in range(5):
     models[1].clone(models[0])
     models[1].deri_change()
     apply(models[1])
     
-    models[1].model-=models[1].changed
-    models[1].model_1-=models[1].changed_1
-    models[1].model+=models[1].changed*learn_rate*(models[0].loss-models[1].loss)
-    models[1].model_1+=models[1].changed_1*learn_rate*(models[0].loss-models[1].loss)
+    models[1].change(-1)
+    models[1].change(learn_rate*direc(models[0].loss-models[1].loss))
     models[0].clone(models[1])
     
     apply(models[0])
@@ -277,12 +336,12 @@ for i in range(10):
     print(models[0].loss,cache.loss)
     if models[0].loss>=cache.loss+0.1:
         models[0].clone(cache)
-        learn_rate*=0.9
+        learn_rate*=0.7
     else:
         if models[0].loss>=cache.loss:
-            learn_rate*=0.9
+            learn_rate*=0.7
         elif random.randint(0,3)==0:
-            learn_rate/=0.9
+            learn_rate/=0.7
         cache.clone(models[0])
     print(learn_rate)
     print(models[0].loss)
@@ -291,9 +350,9 @@ for i in range(10):
 print(models[0].loss)
 print(datetime.datetime.now())
 
-if abs(models[0].loss-initial)<2 or learn_rate<0.01:
+if abs(models[0].loss-initial)<2:
     cache=apply(models[0])
-    if cache>0.25:
+    if cache>0.3:
         models[0].write(str(models[0].loss)+'.txt')
     if os.path.exists(model_file):
         os.remove(model_file)
