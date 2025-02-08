@@ -188,6 +188,7 @@ class model:
             for j in range(self.model.size()[1]):
                 for k in range(self.model.size()[2]):
                     derivatives[i][j][k]*=cache_1[j]
+                    #cache应是关于x的导数，而非关于m和b的倒数。只需要调用change_m_function但是把x和m的位置换一下即可
 
         #计算卷积核梯度
 
