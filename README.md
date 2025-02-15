@@ -9,7 +9,6 @@ The scale of the model can be changed in the __init__ function in class model. D
 
 Using Pre-Trained Models
 The repository includes three pre-trained models in .txt format. Their filenames follow this structure:
-
 <accuracy>_threshold_<value>.txt
 Example:
 0.95_threshold_0.85.txt  →  Accuracy: 95%, Threshold: 0.85
