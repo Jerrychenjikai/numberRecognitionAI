@@ -8,7 +8,6 @@ import copy
 import torch
 import datetime
 from changeFunction import *
-import quicksort
 
 model_file="AIdata2.txt"
 
@@ -75,9 +74,9 @@ class model:
 
         self.model=[]
 
-        for i in range(576):
+        for i in range(576): #576 is the number of input nodes
             self.model.append([])
-            for j in range(50):
+            for j in range(50): #50 is the number of hidden nodes
                 self.model[i].append([])
                 for k in range(2):
                     self.model[i][j].append(random.uniform(-2,2))
@@ -88,7 +87,7 @@ class model:
 
         for i in range(self.model.size()[1]):
             self.model_1.append([])
-            for j in range(1):
+            for j in range(1): #1 is the number of output nodes
                 self.model_1[i].append([])
                 for k in range(2):
                     self.model_1[i][j].append(random.uniform(-2,2))
@@ -326,7 +325,7 @@ def apply(k,train_num=train_num):
     
     for j in range(train_num):
         k.apply(images[j])
-        #print(float(k.ans[0]),int(labels[j]))
+        print(float(k.ans[0]),int(labels[j]))
         scores.append(k.ans[0].item())
         if labels[j]==1:
             k.loss-=math.log(float(1-k.ans[0]+0.0001))#这里搞反了，所以这个模型，答案越接近0，越有可能是1
