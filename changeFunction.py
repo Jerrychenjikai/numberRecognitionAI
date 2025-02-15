@@ -1,29 +1,34 @@
 import torch
 import math
 
-def change_function(x,m,b):    
+factor=0.02
+
+def change_function(x,m,b):
+    global factor
     x=(m*x+b).float()
 
     x=torch.sigmoid(x)
 
-    return x
+    return x*factor
 
-def change_m_function(x,m,b,label,i):
+def change_m_function(x,m,b):
+    global factor
     cache=(m*x+b).float()
 
     cache=torch.sigmoid(cache)*(1-torch.sigmoid(cache))
 
-    cache*=x*((-1)**(label==i).float())*(-1)
+    cache*=x
 
-    return cache
+    return cache*factor
 
-def change_b_function(x,m,b,label,i):
+def change_b_function(x,m,b):
+    global factor
     cache=(m*x+b).float()
 
     cache=torch.sigmoid(cache)*(1-torch.sigmoid(cache))
 
-    cache=cache*((-1)**(label==i).float())*(-1)
+    cache=cache
 
-    return cache
+    return cache*factor
 
     
