@@ -28,9 +28,9 @@ image_size=(images.shape[1],images.shape[2])
 
 models=[]
 
-train_num=10000
+train_num=1000
 
-learn_rate=200
+learn_rate=1000
 
 images=images[:train_num]
 labels=labels[:train_num]
@@ -317,7 +317,7 @@ def best_threshold(scores, labels):
 
 def apply(k,train_num=train_num):
     scores=[]
-    thres=0.5606555236491332
+    thres=0.6018761162168106
     
     k.loss=0
 
@@ -325,7 +325,7 @@ def apply(k,train_num=train_num):
     
     for j in range(train_num):
         k.apply(images[j])
-        print(float(k.ans[0]),int(labels[j]))
+        #print(float(k.ans[0]),int(labels[j]))
         scores.append(k.ans[0].item())
         if labels[j]==1:
             k.loss-=math.log(float(1-k.ans[0]+0.0001))#这里搞反了，所以这个模型，答案越接近0，越有可能是1
